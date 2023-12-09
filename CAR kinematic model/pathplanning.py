@@ -2,7 +2,7 @@ import numpy as np
 import math
 import scipy.interpolate as scipy_interpolate
 from utils import angle_of_line
-
+from collections import deque
 
 ############################################## Functions ######################################################
 
@@ -27,7 +27,7 @@ def interpolate_path(path, sample_rate):
 
 ################################################ Path Planner ################################################
 
-class AStarPlanner:
+class Planner:
 
     def __init__(self, ox, oy, resolution, rr):
         """
@@ -48,6 +48,7 @@ class AStarPlanner:
         self.motion = self.get_motion_model()
         self.calc_obstacle_map(ox, oy)
 
+
     class Node:
         def __init__(self, x, y, cost, parent_index):
             self.x = x  # index of grid
@@ -59,80 +60,7 @@ class AStarPlanner:
             return str(self.x) + "," + str(self.y) + "," + str(
                 self.cost) + "," + str(self.parent_index)
 
-    def planning(self, sx, sy, gx, gy):
-        """
-        A star path search
-
-        input:
-            s_x: start x position [m]
-            s_y: start y position [m]
-            gx: goal x position [m]
-            gy: goal y position [m]
-
-        output:
-            rx: x position list of the final path
-            ry: y position list of the final path
-        """
-
-        start_node = self.Node(self.calc_xy_index(sx, self.min_x),
-                               self.calc_xy_index(sy, self.min_y), 0.0, -1)
-        goal_node = self.Node(self.calc_xy_index(gx, self.min_x),
-                              self.calc_xy_index(gy, self.min_y), 0.0, -1)
-
-        open_set, closed_set = dict(), dict()
-        open_set[self.calc_grid_index(start_node)] = start_node
-
-        while 1:
-            if len(open_set) == 0:
-                print("Open set is empty..")
-                break
-
-            c_id = min(
-                open_set,
-                key=lambda o: open_set[o].cost + self.calc_heuristic(goal_node,
-                                                                     open_set[
-                                                                         o]))
-            current = open_set[c_id]
-
-            if current.x == goal_node.x and current.y == goal_node.y:
-                print("Find goal")
-                goal_node.parent_index = current.parent_index
-                goal_node.cost = current.cost
-                break
-
-            # Remove the item from the open set
-            del open_set[c_id]
-
-            # Add it to the closed set
-            closed_set[c_id] = current
-
-            # expand_grid search grid based on motion model
-            for i, _ in enumerate(self.motion):
-                node = self.Node(current.x + self.motion[i][0],
-                                 current.y + self.motion[i][1],
-                                 current.cost + self.motion[i][2], c_id)
-                n_id = self.calc_grid_index(node)
-
-                # If the node is not safe, do nothing
-                if not self.verify_node(node):
-                    continue
-
-                if n_id in closed_set:
-                    continue
-
-                if n_id not in open_set:
-                    open_set[n_id] = node  # discovered a new node
-                else:
-                    if open_set[n_id].cost > node.cost:
-                        # This path is the best until now. record it
-                        open_set[n_id] = node
-
-        rx, ry = self.calc_final_path(goal_node, closed_set)
-
-        return rx, ry
-
     def calc_final_path(self, goal_node, closed_set):
-        # generate final course
         rx, ry = [self.calc_grid_position(goal_node.x, self.min_x)], [
             self.calc_grid_position(goal_node.y, self.min_y)]
         parent_index = goal_node.parent_index
@@ -144,20 +72,7 @@ class AStarPlanner:
 
         return rx, ry
 
-    @staticmethod
-    def calc_heuristic(n1, n2):
-        w = 1.0  # weight of heuristic
-        d = w * math.hypot(n1.x - n2.x, n1.y - n2.y)
-        return d
-
     def calc_grid_position(self, index, min_position):
-        """
-        calc grid position
-
-        :param index:
-        :param min_position:
-        :return:
-        """
         pos = index * self.resolution + min_position
         return pos
 
@@ -224,6 +139,209 @@ class AStarPlanner:
         return motion
 
 
+       
+class AStarPlanner(Planner):
+
+    def __init__(self, ox, oy, resolution, rr):
+        super().__init__(ox, oy, resolution, rr)
+
+
+    def planning(self, sx, sy, gx, gy):
+        start_node = self.Node(self.calc_xy_index(sx, self.min_x),
+                               self.calc_xy_index(sy, self.min_y), 0.0, -1)
+        goal_node = self.Node(self.calc_xy_index(gx, self.min_x),
+                              self.calc_xy_index(gy, self.min_y), 0.0, -1)
+
+        open_set, closed_set = dict(), dict()
+        open_set[self.calc_grid_index(start_node)] = start_node
+
+        while 1:
+            if len(open_set) == 0:
+                print("Open set is empty..")
+                break
+
+            c_id = min(
+                open_set,
+                key=lambda o: open_set[o].cost + self.calc_heuristic(goal_node,
+                                                                     open_set[
+                                                                         o]))
+            current = open_set[c_id]
+
+            if current.x == goal_node.x and current.y == goal_node.y:
+                print("Find goal")
+                goal_node.parent_index = current.parent_index
+                goal_node.cost = current.cost
+                break
+
+            # Remove the item from the open set
+            del open_set[c_id]
+
+            # Add it to the closed set
+            closed_set[c_id] = current
+
+            # expand_grid search grid based on motion model
+            for i, _ in enumerate(self.motion):
+                node = self.Node(current.x + self.motion[i][0],
+                                 current.y + self.motion[i][1],
+                                 current.cost + self.motion[i][2], c_id)
+                n_id = self.calc_grid_index(node)
+
+                # If the node is not safe, do nothing
+                if not self.verify_node(node):
+                    continue
+
+                if n_id in closed_set:
+                    continue
+
+                if n_id not in open_set:
+                    open_set[n_id] = node  # discovered a new node
+                else:
+                    if open_set[n_id].cost > node.cost:
+                        # This path is the best until now. record it
+                        open_set[n_id] = node
+
+        rx, ry = self.calc_final_path(goal_node, closed_set)
+
+        return rx, ry
+
+    
+    @staticmethod
+    def calc_heuristic(n1, n2):
+        w = 1.0  # weight of heuristic
+        d = w * math.hypot(n1.x - n2.x, n1.y - n2.y)
+        return d
+
+class DFSPlanner(Planner):
+    def __init__(self, ox, oy, resolution, rr):
+        super().__init__(ox, oy, resolution, rr)
+
+
+    def planning(self, sx, sy, gx, gy):
+        start_node = self.Node(self.calc_xy_index(sx, self.min_x),
+                           self.calc_xy_index(sy, self.min_y), 0.0, -1)
+        goal_node = self.Node(self.calc_xy_index(gx, self.min_x),
+                            self.calc_xy_index(gy, self.min_y), 0.0, -1)
+
+        open_stack, closed_set = [], dict()
+        open_stack.append(start_node)
+
+        while open_stack:
+            current = open_stack.pop()
+
+            if current.x == goal_node.x and current.y == goal_node.y:
+                print("Find goal")
+                goal_node.parent_index = current.parent_index
+                goal_node.cost = current.cost
+                break
+
+            closed_set[self.calc_grid_index(current)] = current
+
+            for i, _ in enumerate(self.motion):
+                node = self.Node(current.x + self.motion[i][0],
+                                current.y + self.motion[i][1],
+                                current.cost + self.motion[i][2], self.calc_grid_index(current))
+
+                if not self.verify_node(node) or self.calc_grid_index(node) in closed_set:
+                    continue
+
+                open_stack.append(node)
+
+        rx, ry = self.calc_final_path(goal_node, closed_set)
+        return rx, ry
+
+
+class BFSPlanner(Planner):
+    def __init__(self, ox, oy, resolution, rr):
+        super().__init__(ox, oy, resolution, rr)
+
+
+    def planning(self, sx, sy, gx, gy):
+        start_node = self.Node(self.calc_xy_index(sx, self.min_x),
+                            self.calc_xy_index(sy, self.min_y), 0.0, -1)
+        goal_node = self.Node(self.calc_xy_index(gx, self.min_x),
+                            self.calc_xy_index(gy, self.min_y), 0.0, -1)
+
+        open_queue, closed_set = deque(), dict()
+        open_queue.append(start_node)
+
+        while open_queue:
+            current = open_queue.popleft()
+
+            if current.x == goal_node.x and current.y == goal_node.y:
+                print("Find goal")
+                goal_node.parent_index = current.parent_index
+                goal_node.cost = current.cost
+                break
+
+            closed_set[self.calc_grid_index(current)] = current
+
+            for i, _ in enumerate(self.motion):
+                node = self.Node(current.x + self.motion[i][0],
+                                current.y + self.motion[i][1],
+                                current.cost + self.motion[i][2], self.calc_grid_index(current))
+
+                if not self.verify_node(node) or self.calc_grid_index(node) in closed_set:
+                    continue
+
+                open_queue.append(node)
+
+        rx, ry = self.calc_final_path(goal_node, closed_set)
+        return rx, ry
+    
+
+class IDDFSPlanner(Planner):
+    
+    def __init__(self, ox, oy, resolution, rr):
+        super().__init__(ox, oy, resolution, rr)
+
+
+    def planning(self, sx, sy, gx, gy):
+        start_node = self.Node(self.calc_xy_index(sx, self.min_x),
+                            self.calc_xy_index(sy, self.min_y), 0.0, -1)
+        goal_node = self.Node(self.calc_xy_index(gx, self.min_x),
+                            self.calc_xy_index(gy, self.min_y), 0.0, -1)
+
+        depth = 0
+        while True:
+            result, closed_set = self.dls(start_node, goal_node, depth)
+            if result:
+                break
+            depth += 1
+
+        rx, ry = self.calc_final_path(goal_node, closed_set)
+        return rx, ry
+
+    def dls(self, start_node, goal_node, depth):
+        open_stack, closed_set = [], dict()
+        open_stack.append(start_node)
+
+        while open_stack:
+            current = open_stack.pop()
+
+            if current.x == goal_node.x and current.y == goal_node.y:
+                print("Find goal")
+                goal_node.parent_index = current.parent_index
+                goal_node.cost = current.cost
+                return True, closed_set
+
+            if current.cost > depth:
+                continue
+
+            closed_set[self.calc_grid_index(current)] = current
+
+            for i, _ in enumerate(self.motion):
+                node = self.Node(current.x + self.motion[i][0],
+                                current.y + self.motion[i][1],
+                                current.cost + self.motion[i][2], self.calc_grid_index(current))
+
+                if not self.verify_node(node) or self.calc_grid_index(node) in closed_set:
+                    continue
+
+                open_stack.append(node)
+
+        return False, closed_set
+
+###################################  Path Planning ################################
 class PathPlanning:
     def __init__(self,obstacles):
         self.margin = 5
@@ -241,10 +359,13 @@ class PathPlanning:
         self.oy = [int(item) for item in self.obs[:,1]]
         self.grid_size = 1
         self.robot_radius = 4
-        self.a_star = AStarPlanner(self.ox, self.oy, self.grid_size, self.robot_radius)
+        self.planner = None
+
+    def set_planner(self, planner):
+            self.planner = planner(self.ox, self.oy, self.grid_size, self.robot_radius)
 
     def plan_path(self,sx, sy, gx, gy):    
-        rx, ry = self.a_star.planning(sx+self.margin, sy+self.margin, gx+self.margin, gy+self.margin)
+        rx, ry = self.planner.planning(sx+self.margin, sy+self.margin, gx+self.margin, gy+self.margin)
         rx = np.array(rx)-self.margin+0.5
         ry = np.array(ry)-self.margin+0.5
         path = np.vstack([rx,ry]).T
@@ -269,10 +390,14 @@ class ParkPathPlanning:
         self.oy = [int(item) for item in self.obs[:,1]]
         self.grid_size = 1
         self.robot_radius = 4
-        self.a_star = AStarPlanner(self.ox, self.oy, self.grid_size, self.robot_radius)
+        self.planner = None
+
+    # strategy pattern
+    def set_planner(self, planner):
+        self.planner = planner(self.ox, self.oy, self.grid_size, self.robot_radius)
 
     def generate_park_scenario(self,sx, sy, gx, gy):    
-        rx, ry = self.a_star.planning(sx+self.margin, sy+self.margin, gx+self.margin, gy+self.margin)
+        rx, ry = self.planner.planning(sx+self.margin, sy+self.margin, gx+self.margin, gy+self.margin)
         rx = np.array(rx)-self.margin+0.5
         ry = np.array(ry)-self.margin+0.5
         path = np.vstack([rx,ry]).T

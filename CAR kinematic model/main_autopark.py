@@ -4,7 +4,7 @@ import time
 import argparse
 
 from environment import Environment, Parking1
-from pathplanning import PathPlanning, ParkPathPlanning, interpolate_path
+from pathplanning import PathPlanning, ParkPathPlanning, interpolate_path, AStarPlanner, DFSPlanner, BFSPlanner, IDDFSPlanner
 from control import Car_Dynamics, MPC_Controller, Linear_MPC_Controller
 from utils import angle_of_line, make_square, DataLogger
 
@@ -61,9 +61,12 @@ if __name__ == '__main__':
     key = cv2.waitKey(1)
     #############################################################################################
 
-    ############################# path planning #################################################
+    ############################# path planning : A* #################################################
     park_path_planner = ParkPathPlanning(obs)
+    park_path_planner.set_planner(BFSPlanner)
+
     path_planner = PathPlanning(obs)
+    path_planner.set_planner(BFSPlanner)
 
     print('planning park scenario ...')
     new_end, park_path, ensure_path1, ensure_path2 = park_path_planner.generate_park_scenario(int(start[0]),int(start[1]),int(end[0]),int(end[1]))
@@ -81,7 +84,6 @@ if __name__ == '__main__':
     execution_time = end_time - start_time  # Calculate the execution time
     print(f"Path planning took {execution_time} seconds.")
 
-    # print('path planning time : ', end - start)
 
     print('interpolating ...')
     interpolated_path = interpolate_path(path, sample_rate=5)
